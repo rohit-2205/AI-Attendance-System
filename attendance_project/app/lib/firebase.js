@@ -3,7 +3,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, Go
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAM85UH98yD322Zl5S4mPFa321oKRFYF4Y",
+  apiKey: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   authDomain: "upasthit-88cc3.firebaseapp.com",
   projectId: "upasthit-88cc3",
   storageBucket: "upasthit-88cc3.firebasestorage.app",
@@ -45,4 +45,5 @@ export { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, googl
 
 // // Initialize Firebase
 // const app = initializeApp(firebaseConfig);
+
 // const analytics = getAnalytics(app);
