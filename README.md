@@ -52,7 +52,7 @@ Login Page
 
 Home Interface
 
-<img width="43" height="80" alt="image" src="https://github.com/user-attachments/assets/9cfd77a9-133b-4aa6-917a-97debd03513a" />
+<img width="794" height="499" alt="image" src="https://github.com/user-attachments/assets/447e1096-811f-451b-be2c-1a576852e618" />
 
 Live Detection (Uniform + Face Recognition)
 
