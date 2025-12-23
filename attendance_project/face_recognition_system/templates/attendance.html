@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Automatic Face Attendance</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: "Poppins", sans-serif;
+    }
+
+    body {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      background: linear-gradient(135deg, #6a11cb, #2575fc);
+      overflow: hidden;
+      color: #fff;
+    }
+
+    .container {
+      text-align: center;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border-radius: 20px;
+      padding: 40px;
+      width: 90%;
+      max-width: 600px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      animation: fadeIn 1.2s ease-out;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 10px;
+      animation: slideDown 1s ease-out;
+    }
+
+    p {
+      font-size: 1.1rem;
+      opacity: 0.85;
+      margin-bottom: 20px;
+    }
+
+    .video-container {
+      position: relative;
+      display: inline-block;
+      margin-top: 15px;
+    }
+
+    video {
+      width: 100%;
+      max-width: 480px;
+      border-radius: 15px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      animation: float 3s ease-in-out infinite;
+    }
+
+    #status {
+      font-size: 1.1rem;
+      margin-top: 15px;
+      color: #fff;
+      font-weight: 500;
+      animation: fadeIn 1s ease-out;
+    }
+
+    footer {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      text-align: center;
+      font-size: 0.9rem;
+      opacity: 0.7;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎥 Automatic Face Attendance</h1>
+    <p>Please stay still and face the camera to mark attendance automatically.</p>
+
+    <div class="video-container">
+      <video id="video" autoplay></video>
+      <p id="status">📸 Initializing camera...</p>
+    </div>
+  </div>
+
+  <footer>© 2025 Yeshwantrao Chavan College of Engineering</footer>
+
+  <!-- <script>
+    const video = document.getElementById('video');
+    const statusText = document.getElementById('status');
+    let captureInterval;  // store interval reference
+    let streamRef;        // store camera stream reference
+
+    // Initialize webcam
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+        streamRef = stream;  // save for later stop
+        statusText.textContent = "✅ Camera active — please look straight...";
+        autoCapture();
+      })
+      .catch(err => {
+        console.error(err);
+        statusText.textContent = "❌ Error accessing camera. Please check permissions.";
+      });
+
+    function autoCapture() {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      captureInterval = setInterval(() => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvas.toDataURL('image/jpeg');
+
+        fetch('/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: imageData })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            statusText.textContent = "✅ " + data.message;
+
+            // Stop further captures
+            clearInterval(captureInterval);
+
+            // Stop camera
+            if (streamRef) {
+              streamRef.getTracks().forEach(track => track.stop());
+            }
+
+            // Redirect to home after short delay
+            setTimeout(() => {
+              window.location.href = "/";
+            }, 2000);
+          } else {
+            statusText.textContent = "⚠️ " + data.message;
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          statusText.textContent = "❌ Network Error: " + err;
+        });
+      }, 3000);
+    }
+  </script> -->
+  <script>
+  const video = document.getElementById('video');
+  const statusText = document.getElementById('status');
+
+  let captureInterval = null;
+  let streamRef = null;
+  let attendanceLocked = false; // 🔒 prevent multiple calls
+
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => {
+      video.srcObject = stream;
+      streamRef = stream;
+      statusText.textContent = "✅ Camera active — please look straight...";
+      startAutoCapture();
+    })
+    .catch(err => {
+      console.error(err);
+      statusText.textContent = "❌ Camera access denied.";
+    });
+
+  function startAutoCapture() {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    captureInterval = setInterval(async () => {
+      if (attendanceLocked) return; // 🔒 block further calls
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = canvas.toDataURL('image/jpeg');
+
+      attendanceLocked = true;       // 🔒 LOCK before fetch
+      clearInterval(captureInterval);
+
+      try {
+        const response = await fetch('/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: imageData })
+        });
+
+        const text = await response.text(); // ✅ SAFE
+        let data;
+
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error("Invalid server response");
+        }
+
+        if (data.success) {
+          statusText.textContent = "✅ " + data.message;
+
+          // Stop camera safely
+          if (streamRef) {
+            streamRef.getTracks().forEach(track => track.stop());
+          }
+
+          setTimeout(() => {
+            window.location.replace("/"); // ✅ safer redirect
+          }, 1500);
+
+        } else {
+          attendanceLocked = false; // unlock if not matched
+          statusText.textContent = "⚠️ " + data.message;
+          startAutoCapture(); // retry
+        }
+
+      } catch (err) {
+        console.error("Fetch error:", err);
+        statusText.textContent = "❌ Network error. Please try again.";
+        attendanceLocked = false;
+        startAutoCapture();
+      }
+
+    }, 3000);
+  }
+</script>
+
+</body>
+</html>

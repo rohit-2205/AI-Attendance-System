@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mark Attendance</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Poppins", sans-serif;
+      }
+
+      body {
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #6a11cb, #2575fc);
+        color: #fff;
+      }
+
+      .container {
+        text-align: center;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border-radius: 25px;
+        padding: 40px;
+        width: 90%;
+        max-width: 700px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        animation: fadeIn 1s ease-out;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+        margin-bottom: 20px;
+        animation: slideDown 1s ease-out;
+      }
+
+      .video-wrapper {
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 15px;
+        overflow: hidden;
+        width: 100%;
+        max-width: 600px;
+        margin: 0 auto 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+
+      video {
+        width: 100%;
+        border-radius: 15px;
+      }
+
+      .button-group {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        background: linear-gradient(90deg, #6a11cb, #2575fc);
+        border: none;
+        color: #fff;
+        padding: 12px 25px;
+        border-radius: 30px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      button:hover {
+        transform: scale(1.05);
+        background: linear-gradient(90deg, #2575fc, #6a11cb);
+        box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+      }
+
+      #status {
+        margin-top: 20px;
+        font-size: 1.1rem;
+        font-weight: 500;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <h1>Mark Attendance for {{ name }}</h1>
+
+      <div class="video-wrapper">
+        <video id="video" autoplay></video>
+      </div>
+
+      <div class="button-group">
+        <button id="capture">📸 Capture Photo</button>
+        <button id="complete" style="display: none">
+          ✅ Complete Attendance
+        </button>
+      </div>
+
+      <div id="status"></div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const completeButton = document.getElementById("complete");
+      const statusDiv = document.getElementById("status");
+
+      // Access the webcam
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices
+          .getUserMedia({ video: true })
+          .then(function (stream) {
+            video.srcObject = stream;
+            video.play();
+          });
+      }
+
+      // Capture photo
+      document.getElementById("capture").addEventListener("click", function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+
+        canvas.toBlob(function (blob) {
+          const formData = new FormData();
+          formData.append("name", "{{ name }}");
+          formData.append("student_id", "{{ student_id }}");
+          formData.append("image", blob);
+
+          fetch("/save_image", {
+            method: "POST",
+            body: formData,
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                statusDiv.innerHTML = "✅ Attendance marked successfully!";
+                completeButton.style.display = "inline-block";
+              } else {
+                statusDiv.innerHTML = "⚠️ Error: Attendance not saved.";
+              }
+            })
+            .catch(() => {
+              statusDiv.innerHTML = "⚠️ Server error!";
+            });
+        });
+      });
+
+      // Complete attendance
+      completeButton.addEventListener("click", function () {
+        window.location.href = "/";
+      });
+    </script>
+  </body>
+</html>

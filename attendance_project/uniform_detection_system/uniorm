@@ -1,0 +1,297 @@
+# uniform.py (modified to detect human body + robust shirt/pants checks)
+import cv2
+import numpy as np
+import time
+import threading
+import queue
+from flask import Flask, Response, jsonify, render_template_string, request
+from flask_cors import CORS
+from ultralytics import YOLO
+import torch
+
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+# ---------------- Device & model ----------------
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+print(f"✅ Using device: {device}")
+
+# point this to your trained model
+YOLO_MODEL_PATH = r"A:\\Facial Attendance\\attendance_project\\uniform_detection_system\\best.pt"
+model = YOLO(YOLO_MODEL_PATH)
+if device.startswith('cuda'):
+    model.to(device)
+    # ⚠️ Removed model.model.half() to prevent dtype mismatch
+
+
+MODEL_CONF = 0.30   # keep moderately low to get candidate boxes
+IMG_SZ = (320, 240)   # inference size (width, height)
+DETECT_EVERY = 4      # less frequent heavy model runs
+
+# ---------------- Camera (Windows-friendly) ----------------
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("⚠️ Retrying camera with MSMF backend...")
+    cap = cv2.VideoCapture(0, cv2.CAP_MSMF)
+
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cap.set(cv2.CAP_PROP_FPS, 20)
+try:
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+except Exception:
+    pass
+
+if not cap.isOpened():
+    print("❌ Cannot open camera")
+    exit()
+
+frame_q = queue.Queue(maxsize=2)
+latest_frame = None
+latest_processed_frame = None
+stop_event = threading.Event()
+status_lock = threading.Lock()
+detection_status = {'shirt_detected': False, 'pants_detected': False, 'uniform_detected': False}
+HTML_PAGE = """ <!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8" /> <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <title>Uniform Detection</title> <style> /* ====== Reset & Fonts ====== */ * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Poppins", sans-serif; } /* ====== Background ====== */ body { height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #6a11cb, #2575fc); color: #fff; } /* ====== Container ====== */ .uniform-container { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border-radius: 25px; padding: 40px; width: 90%; max-width: 600px; text-align: center; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); animation: fadeIn 1s ease-out; } /* ====== Logo ====== */ .logo { width: 80px; height: 80px; border-radius: 50%; margin-bottom: 15px; border: 2px solid rgba(255, 255, 255, 0.3); box-shadow: 0 0 20px rgba(255, 255, 255, 0.2); animation: float 3s ease-in-out infinite; } /* ====== Heading ====== */ h1 { font-size: 1.8rem; margin-bottom: 25px; color: #fff; animation: slideDown 1s ease-out; } /* ====== Video Section ====== */ .video-container { display: flex; justify-content: center; margin-bottom: 20px; } #video { border: 3px solid rgba(255, 255, 255, 0.4); border-radius: 15px; width: 480px; height: 360px; box-shadow: 0 0 20px rgba(255, 255, 255, 0.2); } /* ====== Status ====== */ #status { margin-top: 15px; font-weight: 600; color: #00ffcc; text-shadow: 0 0 8px rgba(0, 255, 204, 0.5); } .good { color: #0a8f3a; font-weight:700; } .bad { color: #c0392b; font-weight:700; } /* ====== Animations ====== */ @keyframes fadeIn { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } } @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } } @keyframes float { 0% { transform: translateY(0); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0); } } </style> </head> <body> <div class="uniform-container"> <img src="/static/loginlogo.png" alt="logo" class="logo" /> <h1>Uniform Detection System</h1> <div class="video-container"> <img id="video" src="/video_feed" alt="Live feed" /> </div> <div id="status">Checking uniform...</div> </div> <script> const STATUS_POLL_MS = 500; const REDIRECT_DELAY_MS = 600; async function checkStatus(){ try { const resp = await fetch('/detection_status', {cache: "no-store"}); if (!resp.ok) return; const data = await resp.json(); const statusDiv = document.getElementById('status'); if (data.uniform_detected) { statusDiv.innerHTML = "<span class='good'>✅ UNIFORM DETECTED! Preparing attendance...</span>"; await fetch('/reset_status', { method: 'POST' }); setTimeout(() => { window.location.href = "http://localhost:5001/attendance"; }, REDIRECT_DELAY_MS); } else { let parts = []; parts.push(data.shirt_detected ? "<span class='good'>Shirt </span>" : "<span class='bad'>Shirt </span>"); parts.push(data.pants_detected ? "<span class='good'>Pants </span>" : "<span class='bad'>Pants </span>"); statusDiv.innerHTML = parts.join(" &nbsp; "); } } catch (err) { document.getElementById('status').innerHTML = "Connecting to camera..."; } } setInterval(checkStatus, STATUS_POLL_MS); checkStatus(); </script> </body> </html> """
+  # replace with your HTML (kept short here)
+
+# ---------------- fast helpers ----------------
+def fast_color_ratio_b_dominant(region, downsize=(32, 32)):
+    """
+    Returns ratio of pixels in the region that look 'blue-dominant' (B > R + delta and B > G + delta)
+    Also returns mean brightness to avoid counting very dark noise.
+    """
+    if region.size == 0:
+
+        
+        return 0.0, 0.0
+    small = cv2.resize(region, downsize, interpolation=cv2.INTER_AREA)
+    b, g, r = cv2.split(small)
+    # blue-dominant if blue channel significantly larger than red and green
+    delta = 20  # how much B should exceed others (tuneable)
+    blue_mask = (b.astype(int) > (r.astype(int) + delta)) & (b.astype(int) > (g.astype(int) + delta))
+    ratio = float(np.count_nonzero(blue_mask)) / blue_mask.size
+    mean_val = np.mean(cv2.cvtColor(small, cv2.COLOR_BGR2HSV)[:, :, 2])  # brightness (V)
+    return ratio, mean_val
+
+# ---------------- capture thread (fast) ----------------
+def capture_thread_fn():
+    global latest_frame
+    while not stop_event.is_set():
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.01)
+            continue
+        latest_frame = frame.copy()
+        try:
+            frame_q.put_nowait(frame.copy())
+        except queue.Full:
+            try:
+                frame_q.get_nowait()
+                frame_q.put_nowait(frame.copy())
+            except queue.Empty:
+                pass
+        time.sleep(0.01)
+
+capture_thread = threading.Thread(target=capture_thread_fn, daemon=True)
+capture_thread.start()
+
+# ---------------- HOG person detector fallback (no external weights) ----------------
+hog = cv2.HOGDescriptor()
+hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
+def detect_person_hog(frame):
+    """
+    Returns the largest person bbox from HOG (x, y, w, h) or None.
+    Uses a scaled detection on a limited size to be faster.
+    """
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    small = cv2.resize(rgb, (640, 480))
+    rects, _ = hog.detectMultiScale(small, winStride=(8, 8), padding=(8, 8), scale=1.05)
+    if len(rects) == 0:
+        return None
+    # choose largest
+    areas = [w*h for (x,y,w,h) in rects]
+    idx = int(np.argmax(areas))
+    x,y,w,h = rects[idx]
+    # scale back to original frame size
+    sx = frame.shape[1] / 640.0
+    sy = frame.shape[0] / 480.0
+    return (int(x * sx), int(y * sy), int(w * sx), int(h * sy))
+
+# ---------------- inference thread ----------------
+def inference_thread_fn():
+    global latest_processed_frame
+    frame_count = 0
+
+    # thresholds (tweakable)
+    SHIRT_BLUE_RATIO_THRESH = 0.12   # fraction of pixels in upper area that are blue-dominant
+    PANTS_BLUE_RATIO_THRESH = 0.12   # fraction for lower area
+    MIN_BRIGHTNESS = 50              # ignore extremely dark regions
+
+    while not stop_event.is_set():
+        try:
+            frame = frame_q.get(timeout=0.2)
+        except queue.Empty:
+            continue
+
+        frame_count += 1
+        small_frame = cv2.resize(frame, IMG_SZ)  # (w,h)
+
+        # run YOLO less frequently (candidates only)
+        results = None
+        if frame_count % DETECT_EVERY == 0:
+            with torch.no_grad():
+                results = model(small_frame, conf=MODEL_CONF, verbose=False)
+
+        # default false each loop: don't let a single positive persist forever
+        shirt_detected = False
+        pants_detected = False
+        boxes_for_draw = []
+
+        # 1) Try to find person bbox via HOG (fallback) on full resolution frame
+        person_bbox = detect_person_hog(frame)  # works reasonably on standing subjects
+        # person_bbox is in full-res frame coords. Convert to small_frame coords if needed
+        if person_bbox:
+            x, y, w, h = person_bbox
+            # clamp
+            x1, y1 = max(0, x), max(0, y)
+            x2, y2 = min(frame.shape[1], x + w), min(frame.shape[0], y + h)
+            # map to small_frame coords
+            sx = IMG_SZ[0] / frame.shape[1]
+            sy = IMG_SZ[1] / frame.shape[0]
+            rx1, ry1, rx2, ry2 = int(x1 * sx), int(y1 * sy), int(x2 * sx), int(y2 * sy)
+            # ensure valid
+            rx1, ry1 = max(0, rx1), max(0, ry1)
+            rx2, ry2 = min(IMG_SZ[0], rx2), min(IMG_SZ[1], ry2)
+            person_region = small_frame[ry1:ry2, rx1:rx2]
+
+            if person_region.size != 0:
+                h_r = ry2 - ry1
+                # split into upper (shirt) and lower (pants)
+                upper = person_region[0:int(h_r*0.45), :]
+                lower = person_region[int(h_r*0.45):, :]
+
+                upper_ratio, upper_val = fast_color_ratio_b_dominant(upper)
+                lower_ratio, lower_val = fast_color_ratio_b_dominant(lower)
+
+                # simple checks using blue dominance and brightness
+                if upper_val > MIN_BRIGHTNESS and upper_ratio > SHIRT_BLUE_RATIO_THRESH:
+                    shirt_detected = True
+                    boxes_for_draw.append((rx1, ry1, rx2, ry1 + int(h_r*0.45), f"Shirt (color match {upper_ratio:.2f})"))
+
+                if lower_val > MIN_BRIGHTNESS and lower_ratio > PANTS_BLUE_RATIO_THRESH:
+                    pants_detected = True
+                    boxes_for_draw.append((rx1, ry1 + int(h_r*0.45), rx2, ry2, f"Pants (color match {lower_ratio:.2f})"))
+
+        # 2) Combine with model (if model returned boxes)
+        if results:
+            for r in results:
+                boxes = r.boxes.xyxy.cpu().numpy()
+                confidences = r.boxes.conf.cpu().numpy()
+                class_ids = r.boxes.cls.cpu().numpy().astype(int)
+                for i, box in enumerate(boxes):
+                    x1, y1, x2, y2 = map(int, box)
+                    confidence = float(confidences[i])
+                    class_id = int(class_ids[i])  # your model class mapping (0=pant,1=shirt ?) adjust as needed
+
+                    # clamp to small_frame
+                    x1 = max(0, min(IMG_SZ[0]-1, x1)); x2 = max(0, min(IMG_SZ[0]-1, x2))
+                    y1 = max(0, min(IMG_SZ[1]-1, y1)); y2 = max(0, min(IMG_SZ[1]-1, y2))
+                    detected_region = small_frame[y1:y2, x1:x2]
+                    if detected_region.size == 0:
+                        continue
+
+                    # use color check to confirm
+                    b_ratio, b_val = fast_color_ratio_b_dominant(detected_region)
+                    # decide label based on class id and color or confidence
+                    label = None
+                    # if your model's class_id mapping is known, prefer that mapping — I've used 1=shirt,0=pants as example
+                    if class_id == 1 and (b_ratio > SHIRT_BLUE_RATIO_THRESH or confidence > 0.55):
+                        shirt_detected = True
+                        label = f"Shirt {confidence:.2f}"
+                    if class_id == 0 and (b_ratio > PANTS_BLUE_RATIO_THRESH or confidence > 0.45):
+                        pants_detected = True
+                        label = f"Pants {confidence:.2f}"
+
+                    if label:
+                        boxes_for_draw.append((x1, y1, x2, y2, label))
+
+        # Build display image (scale up for nicer viewing)
+        display = cv2.resize(small_frame, (640, 480))
+        scale_x = display.shape[1] / IMG_SZ[0]
+        scale_y = display.shape[0] / IMG_SZ[1]
+
+        for idx, (x1, y1, x2, y2, label) in enumerate(boxes_for_draw):
+            sx1, sy1 = int(x1 * scale_x), int(y1 * scale_y)
+            sx2, sy2 = int(x2 * scale_x), int(y2 * scale_y)
+            cv2.rectangle(display, (sx1, sy1), (sx2, sy2), (255, 0, 0), 2)
+            cv2.putText(display, label, (sx1, sy1 - 10 - idx * 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        # update detection_status (overwrite each loop)
+        with status_lock:
+            detection_status['shirt_detected'] = shirt_detected
+            detection_status['pants_detected'] = pants_detected
+            detection_status['uniform_detected'] = (shirt_detected and pants_detected)
+
+        if detection_status['uniform_detected']:
+            cv2.putText(display, "✅ UNIFORM DETECTED", (30, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+
+        latest_processed_frame = display
+
+inference_thread = threading.Thread(target=inference_thread_fn, daemon=True)
+inference_thread.start()
+
+# ---------------- video generator ----------------
+def gen():
+    while not stop_event.is_set():
+        if latest_processed_frame is not None:
+            _, jpeg = cv2.imencode('.jpg', latest_processed_frame)
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
+        else:
+            blank = np.zeros((480,640,3), dtype=np.uint8)
+            _, jpeg = cv2.imencode('.jpg', blank)
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
+        time.sleep(0.03)
+
+# ---------------- routes ----------------
+@app.route('/')
+def home():
+    # if you kept full HTML above, render it instead of placeholder
+    return render_template_string(HTML_PAGE)
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/detection_status')
+def get_detection_status():
+    with status_lock:
+        status = detection_status.copy()
+    return jsonify(status)
+
+@app.route('/reset_status', methods=['POST'])
+def reset_status():
+    # do NOT stop threads/camera here — just reset detection flags so UI can redirect again later
+    with status_lock:
+        detection_status.clear()
+        detection_status.update({'shirt_detected': False, 'pants_detected': False, 'uniform_detected': False})
+    return jsonify({"message": "Status reset"})
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    # call this only when you want to stop the server and release resources
+    stop_event.set()
+    time.sleep(0.2)
+    try:
+        cap.release()
+        cv2.destroyAllWindows()
+    except Exception as e:
+        print("Error releasing camera:", e)
+    return jsonify({"message": "Shutting down"})
+
+if __name__ == '__main__':
+    print("🌐 Running Uniform Detection on http://localhost:5000")
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True, use_reloader=False)

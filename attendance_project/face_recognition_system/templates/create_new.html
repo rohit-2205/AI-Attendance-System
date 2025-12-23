@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register New Student</title>
+
+    <style>
+      /* ====== Reset & Fonts ====== */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Poppins", sans-serif;
+      }
+
+      /* ====== Background ====== */
+      body {
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #6a11cb, #2575fc);
+        color: #fff;
+      }
+
+      /* ====== Container ====== */
+      .register-container {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border-radius: 25px;
+        padding: 40px;
+        width: 90%;
+        max-width: 500px;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        animation: fadeIn 1s ease-out;
+      }
+
+      /* ====== Logo ====== */
+      .loginlogo {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        margin-bottom: 15px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        animation: float 3s ease-in-out infinite;
+      }
+
+      /* ====== Heading ====== */
+      h1 {
+        font-size: 1.8rem;
+        margin-bottom: 25px;
+        color: #fff;
+        animation: slideDown 1s ease-out;
+      }
+
+      /* ====== Input Fields ====== */
+      .input-group {
+        text-align: left;
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      input {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: none;
+        outline: none;
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+        font-size: 1rem;
+        transition: 0.3s ease;
+      }
+
+      input::placeholder {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      input:focus {
+        background: rgba(255, 255, 255, 0.3);
+        border: 1px solid #fff;
+      }
+
+      /* ====== Buttons ====== */
+      button {
+        background: linear-gradient(90deg, #6a11cb, #2575fc);
+        border: none;
+        color: white;
+        border-radius: 30px;
+        padding: 12px 25px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-top: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      button:hover {
+        transform: scale(1.05);
+        background: linear-gradient(90deg, #2575fc, #6a11cb);
+        box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+      }
+
+      /* ====== Video Section ====== */
+      .video-container {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+      }
+
+      video {
+        border: 3px solid rgba(255, 255, 255, 0.4);
+        border-radius: 15px;
+        width: 320px;
+        height: 240px;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+      }
+
+      /* ====== Image Count ====== */
+      #image-count {
+        margin-top: 15px;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      /* ====== Status ====== */
+      #status {
+        margin-top: 15px;
+        font-weight: 600;
+        color: #00ffcc;
+        text-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+      }
+
+      /* ====== Animations ====== */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes float {
+        0% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-8px);
+        }
+        100% {
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="register-container">
+<img src="../static/loginlogo.png" alt="Login Logo" style="width: 220px; height: 220x;">
+      <h1>Register New Student</h1>
+
+      <form id="register-form">
+        <div class="input-group">
+          <label for="name">Name:</label>
+          <input type="text" id="name" name="name" placeholder="Enter Name" required />
+        </div>
+
+        <div class="input-group">
+          <label for="student_id">Student ID:</label>
+          <input
+            type="text"
+            id="student_id"
+            name="student_id"
+            placeholder="Enter Student ID"
+            required
+          />
+        </div>
+
+        <button type="button" id="startCapture">Start Capture</button>
+      </form>
+
+      <div class="video-container">
+        <video id="video" autoplay></video>
+      </div>
+
+      <button id="capture" style="display: none">📸 Capture Photo</button>
+
+      <p id="image-count">Captured Images: <span>0</span>/10</p>
+      <div id="status"></div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const captureButton = document.getElementById("capture");
+      const imageCount = document.querySelector("#image-count span");
+      const statusDiv = document.getElementById("status");
+      let imgCount = 0;
+
+      document.getElementById("startCapture").addEventListener("click", function () {
+        const name = document.getElementById("name").value;
+        const student_id = document.getElementById("student_id").value;
+
+        if (!name || !student_id) {
+          statusDiv.innerHTML = "⚠️ Please fill out all fields first.";
+          return;
+        }
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ video: true }).then(function (stream) {
+            video.srcObject = stream;
+            video.play();
+            captureButton.style.display = "inline-block";
+            statusDiv.innerHTML = "🎥 Camera ready. Capture images now.";
+          });
+        }
+      });
+
+      captureButton.addEventListener("click", function () {
+        if (imgCount < 10) {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          canvas.getContext("2d").drawImage(video, 0, 0);
+
+          canvas.toBlob(function (blob) {
+            const formData = new FormData();
+            formData.append("name", document.getElementById("name").value);
+            formData.append("student_id", document.getElementById("student_id").value);
+            formData.append("image", blob);
+
+            fetch("/save_image", {
+              method: "POST",
+              body: formData,
+            })
+              .then((response) => response.json())
+              .then((data) => {
+                if (data.success) {
+                  imgCount++;
+                  imageCount.textContent = imgCount;
+                  statusDiv.innerHTML = `✅ Captured ${imgCount}/10 images`;
+
+                  if (imgCount >= 10) {
+                    statusDiv.innerHTML =
+                      "🎉 Captured 10 images. Registration complete!";
+                    captureButton.disabled = true;
+                    setTimeout(() => {
+                      window.location.href = "/";
+                    }, 2500);
+                  }
+                } else {
+                  statusDiv.innerHTML =
+                    "⚠️ Error capturing image. Please try again.";
+                }
+              });
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
