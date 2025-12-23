@@ -41,21 +41,28 @@ CSV / SQLite / MySQL — attendance storage
 
 👀 See It in Action
 <img width="633" height="578" alt="image" src="https://github.com/user-attachments/assets/dd5a915d-84f6-483e-873d-11a6157fda16" />
+
 Uniform Detection
 
 <img width="870" height="462" alt="image" src="https://github.com/user-attachments/assets/a9f4686d-ed56-42cf-b1b0-e318e25042d0" />
+
 Login Page
 
 <img width="870" height="470" alt="image" src="https://github.com/user-attachments/assets/aa0dbc6d-7526-4d98-80eb-98410d7f69c5" />
+
 Home Interface
 
 <img width="43" height="80" alt="image" src="https://github.com/user-attachments/assets/9cfd77a9-133b-4aa6-917a-97debd03513a" />
+
 Live Detection (Uniform + Face Recognition)
 
+
 <img width="870" height="428" alt="image" src="https://github.com/user-attachments/assets/4b6f4f3b-863c-46b1-828c-776419144222" />
+
 Attendance Records
 
 <img width="870" height="462" alt="image" src="https://github.com/user-attachments/assets/6d795b96-d3c7-4096-9675-6a6cec8e21d0" />
+
 Admin Dashboard
 
 💡 Why This Matters
